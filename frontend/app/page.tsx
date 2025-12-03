@@ -2,21 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { 
-  Mic, 
-  Square, 
-  Activity, 
-  Clock, 
-  Hash, 
-  Copy, 
-  Download, 
-  ChevronRight, 
-  History, 
-  Cpu,
-  Wifi,
-  WifiOff
+  Mic, Square, Activity, FileText, Clock, Hash, 
+  Copy, Download, ChevronRight, History, Trash2, CheckCircle2 
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
 // --- Types ---
 interface Session {
@@ -37,9 +26,9 @@ const AudioVisualizer = ({ isRecording, audioContext, source }: { isRecording: b
     if (!isRecording || !audioContext || !source || !canvasRef.current) return;
 
     const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 128; // Lower FFT size for chunkier bars
+    analyser.fftSize = 256;
     source.connect(analyser);
-
+    
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     const canvas = canvasRef.current;
@@ -52,23 +41,26 @@ const AudioVisualizer = ({ isRecording, audioContext, source }: { isRecording: b
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw bars
       const barWidth = (canvas.width / bufferLength) * 2.5;
+      let barHeight;
       let x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
-        const barHeight = (dataArray[i] / 255) * canvas.height;
+        barHeight = (dataArray[i] / 255) * canvas.height;
         
-        // Gradient color based on height
-        const hue = 210 + (barHeight / canvas.height) * 60; // Blue to Purple
-        ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.8)`;
+        // Gradient for bars
+        const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        gradient.addColorStop(0, '#3B82F6'); // Blue
+        gradient.addColorStop(1, '#8B5CF6'); // Purple
+
+        ctx.fillStyle = gradient;
         
-        // Rounded top bars
+        // Rounded tops for bars
         ctx.beginPath();
-        ctx.roundRect(x, canvas.height - barHeight, barWidth - 2, barHeight, [4, 4, 0, 0]);
+        ctx.roundRect(x, canvas.height - barHeight, barWidth, barHeight, [4, 4, 0, 0]);
         ctx.fill();
 
-        x += barWidth;
+        x += barWidth + 2;
       }
     };
 
@@ -80,21 +72,91 @@ const AudioVisualizer = ({ isRecording, audioContext, source }: { isRecording: b
     };
   }, [isRecording, audioContext, source]);
 
-  if (!isRecording) return (
-    <div className="h-16 w-full flex items-center justify-center text-slate-500 text-sm font-medium bg-slate-900/50 rounded-xl border border-slate-800 border-dashed">
-      Visualizer inactive
-    </div>
-  );
+  if (!isRecording) return <div className="h-16 w-full bg-slate-800/50 rounded-xl border border-slate-700/50 flex items-center justify-center text-slate-500 text-sm">Microphone Idle</div>;
 
   return (
-    <div className="h-16 w-full bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden relative">
+    <div className="w-full h-16 overflow-hidden rounded-xl bg-slate-900/50 border border-slate-700/50 backdrop-blur-sm">
       <canvas ref={canvasRef} width={600} height={64} className="w-full h-full" />
     </div>
   );
 };
 
-const SessionCard = ({ session }: { session: Session }) => (
-  <div className="group p-4 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 transition-all cursor-pointer">
+const SessionSummaryModal = ({ 
+  isOpen, 
+  onClose, 
+  transcript, 
+  wordCount, 
+  duration 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  transcript: string; 
+  wordCount: number; 
+  duration: string; 
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-500/10 rounded-lg">
+              <CheckCircle2 className="w-6 h-6 text-green-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-white">Session Details</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            ✕
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+              <div className="flex items-center gap-2 text-slate-400 mb-1">
+                <Clock className="w-4 h-4" />
+                <span className="text-sm font-medium">Duration</span>
+              </div>
+              <p className="text-2xl font-bold text-white">{duration}</p>
+            </div>
+            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+              <div className="flex items-center gap-2 text-slate-400 mb-1">
+                <Hash className="w-4 h-4" />
+                <span className="text-sm font-medium">Word Count</span>
+              </div>
+              <p className="text-2xl font-bold text-white">{wordCount}</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Final Transcript
+            </label>
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-300 leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
+              {transcript || <span className="italic text-slate-600">No speech detected.</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-slate-800 bg-slate-800/30 flex justify-end gap-3">
+          <button 
+            onClick={onClose}
+            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SessionCard = ({ session, onClick }: { session: Session; onClick: (session: Session) => void }) => (
+  <div 
+    onClick={() => onClick(session)}
+    className="group p-4 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 transition-all cursor-pointer"
+  >
     <div className="flex justify-between items-start mb-2">
       <span className="text-xs font-medium text-slate-500 group-hover:text-slate-400 transition-colors">
         {new Date(session.started_at).toLocaleDateString()} • {new Date(session.started_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -127,6 +189,8 @@ export default function Home() {
   const [partialTranscript, setPartialTranscript] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [showSummary, setShowSummary] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   
   // Refs
   const socketRef = useRef<WebSocket | null>(null);
@@ -141,7 +205,11 @@ export default function Home() {
   // Effects
   useEffect(() => {
     fetchSessions();
-    return () => stopRecordingCleanup();
+    return () => {
+      if (isRecordingRef.current) {
+        stopRecordingCleanup();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -169,6 +237,11 @@ export default function Home() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleHistoryClick = (session: Session) => {
+    setSelectedSession(session);
+    setShowSummary(true);
+  };
+
   const startRecording = async () => {
     try {
       setStatus('Connecting');
@@ -185,6 +258,8 @@ export default function Home() {
         setTranscript('');
         setPartialTranscript('');
         setElapsedTime(0);
+        setShowSummary(false);
+        setSelectedSession(null);
         
         timerRef.current = setInterval(() => {
           setElapsedTime(prev => prev + 1);
@@ -253,6 +328,20 @@ export default function Home() {
 
   const stopRecordingCleanup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    
+    // Only show summary if we actually recorded something
+    if (isRecordingRef.current) {
+      const currentSession: Session = {
+        id: 'current',
+        started_at: new Date().toISOString(),
+        audio_duration_seconds: elapsedTime,
+        word_count: transcript.trim().split(/\s+/).filter(w => w.length > 0).length,
+        final_transcript: transcript
+      };
+      setSelectedSession(currentSession);
+      setShowSummary(true);
+    }
+
     setStatus('Ready');
     setIsRecording(false);
     isRecordingRef.current = false;
@@ -279,14 +368,24 @@ export default function Home() {
     element.click();
   };
 
+  const wordCount = (transcript.trim().split(/\s+/).length + (partialTranscript ? 1 : 0)) || 0;
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
       
+      <SessionSummaryModal 
+        isOpen={showSummary} 
+        onClose={() => setShowSummary(false)}
+        transcript={selectedSession?.final_transcript || ''}
+        wordCount={selectedSession?.word_count || 0}
+        duration={selectedSession?.audio_duration_seconds ? selectedSession.audio_duration_seconds.toFixed(1) + 's' : '0.0s'}
+      />
+
       {/* Top Navigation Bar */}
       <nav className="h-16 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md fixed top-0 w-full z-50 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Cpu className="w-5 h-5 text-white" />
+            <Activity className="w-5 h-5 text-white" />
           </div>
           <span className="font-bold text-lg tracking-tight text-white">AlphaNet</span>
         </div>
@@ -300,7 +399,7 @@ export default function Home() {
               ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
               : "bg-slate-800 border-slate-700 text-slate-400"
           )}>
-            {status === 'Recording' ? <Wifi className="w-3 h-3 animate-pulse" /> : <WifiOff className="w-3 h-3" />}
+            <div className={clsx("w-2 h-2 rounded-full", status === 'Recording' ? "bg-red-500 animate-pulse" : "bg-slate-500")} />
             {status}
           </div>
         </div>
@@ -318,7 +417,7 @@ export default function Home() {
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
             {sessions.map((session) => (
-              <SessionCard key={session.id} session={session} />
+              <SessionCard key={session.id} session={session} onClick={handleHistoryClick} />
             ))}
             {sessions.length === 0 && (
               <div className="text-center py-10 text-slate-600 text-sm">
