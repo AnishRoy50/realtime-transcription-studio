@@ -1,34 +1,33 @@
-from functools import lru_cache
-
+import os
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
 
+load_dotenv()
 
 class Settings(BaseSettings):
-    # Raw PostgreSQL pieces (mostly for reference / future use)
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "postgres"
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-    DB_NAME: str = "transcription_db"
+    PROJECT_NAME: str = "Real-Time Transcription API"
+    API_V1_STR: str = "/api/v1"
+    
+    # Database
+    DB_USER: str = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "password")
+    DB_HOST: str = os.getenv("DB_HOST", "localhost")
+    DB_PORT: str = os.getenv("DB_PORT", "5432")
+    DB_NAME: str = os.getenv("DB_NAME", "transcription_db")
+    
+    # Construct DATABASE_URL if not provided
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL", 
+        f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    )
 
-    # Full SQLAlchemy PostgreSQL URL
-    # Example: postgresql+psycopg2://user:password@host:port/db_name
-    DATABASE_URL: str
-
-    APP_ENV: str = "development"
-    LOG_LEVEL: str = "INFO"
-
-    DEFAULT_MODEL: str = "vosk-small-en"
-    DEFAULT_LANGUAGE: str = "en"
+    # AI Model
+    MODEL_PATH: str = os.getenv("MODEL_PATH", "model")
+    
+    # Vosk Model Settings
+    DEFAULT_MODEL: str = "vosk-model-small-en-us-0.15"
 
     class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+        case_sensitive = True
 
-
-@lru_cache()
-def get_settings() -> Settings:
-    return Settings()
-
-
-settings = get_settings()
+settings = Settings()

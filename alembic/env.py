@@ -9,7 +9,8 @@ from sqlalchemy import engine_from_config, pool
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
-from app.db.base import Base  # ensures models are imported
+from app.db.base import Base
+from app.models.session_model import TranscriptionSession  # noqa: F401
 
 
 config = context.config
