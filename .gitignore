@@ -1,4 +1,6 @@
-# Python
+# ======================
+# PYTHON
+# ======================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -21,17 +23,25 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+__pypackages__/        # python environment cache
 
-# Virtual Environments
+# ======================
+# VIRTUAL ENVIRONMENTS
+# ======================
 venv/
 env/
 ENV/
-.env
-.venv
+.venv/
 env.bak/
 venv.bak/
+# env files (security)
+.env
+.env.*
+!.env.example          # allow example env templates
 
-# Testing
+# ======================
+# TESTING
+# ======================
 .pytest_cache/
 .coverage
 htmlcov/
@@ -43,24 +53,40 @@ coverage.xml
 .hypothesis/
 .testmondata*
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# ======================
+# JUPYTER
+# ======================
+.ipynb_checkpoints/
 
-# IDEs
+# ======================
+# IDEs / EDITORS
+# ======================
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS
+# ======================
+# OS FILES
+# ======================
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Docker
+# ======================
+# DOCKER
+# ======================
 .docker/
 
-# Frontend (Node/JS)
+# ======================
+# ALEMBIC
+# ======================
+alembic/versions/*.pyc
+alembic/versions/*~     # temporary backup files
+
+# ======================
+# FRONTEND (Node / Next.js)
+# ======================
 frontend/node_modules/
 frontend/dist/
 frontend/build/
@@ -69,6 +95,15 @@ frontend/.yarn/
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
+frontend/.next/          # ← Next.js build output
 
-# Logs
+# ======================
+# LOGS
+# ======================
 *.log
+
+# ======================
+# AI MODELS (Optional - large files)
+# Comment these out if you check models into repo
+models/
+frontend/models/
