@@ -1,9 +1,24 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Activity, FileText, Clock, Hash } from 'lucide-react';
+import { 
+  Mic, 
+  Square, 
+  Activity, 
+  Clock, 
+  Hash, 
+  Copy, 
+  Download, 
+  ChevronRight, 
+  History, 
+  Cpu,
+  Wifi,
+  WifiOff
+} from 'lucide-react';
 import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
+// --- Types ---
 interface Session {
   id: string;
   started_at: string;
@@ -12,24 +27,130 @@ interface Session {
   final_transcript: string;
 }
 
+// --- Components ---
+
+const AudioVisualizer = ({ isRecording, audioContext, source }: { isRecording: boolean, audioContext: AudioContext | null, source: MediaStreamAudioSourceNode | null }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>();
+
+  useEffect(() => {
+    if (!isRecording || !audioContext || !source || !canvasRef.current) return;
+
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 128; // Lower FFT size for chunkier bars
+    source.connect(analyser);
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = () => {
+      animationRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw bars
+      const barWidth = (canvas.width / bufferLength) * 2.5;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const barHeight = (dataArray[i] / 255) * canvas.height;
+        
+        // Gradient color based on height
+        const hue = 210 + (barHeight / canvas.height) * 60; // Blue to Purple
+        ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.8)`;
+        
+        // Rounded top bars
+        ctx.beginPath();
+        ctx.roundRect(x, canvas.height - barHeight, barWidth - 2, barHeight, [4, 4, 0, 0]);
+        ctx.fill();
+
+        x += barWidth;
+      }
+    };
+
+    draw();
+
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      analyser.disconnect();
+    };
+  }, [isRecording, audioContext, source]);
+
+  if (!isRecording) return (
+    <div className="h-16 w-full flex items-center justify-center text-slate-500 text-sm font-medium bg-slate-900/50 rounded-xl border border-slate-800 border-dashed">
+      Visualizer inactive
+    </div>
+  );
+
+  return (
+    <div className="h-16 w-full bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden relative">
+      <canvas ref={canvasRef} width={600} height={64} className="w-full h-full" />
+    </div>
+  );
+};
+
+const SessionCard = ({ session }: { session: Session }) => (
+  <div className="group p-4 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 transition-all cursor-pointer">
+    <div className="flex justify-between items-start mb-2">
+      <span className="text-xs font-medium text-slate-500 group-hover:text-slate-400 transition-colors">
+        {new Date(session.started_at).toLocaleDateString()} • {new Date(session.started_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+      </span>
+      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-300 transition-colors" />
+    </div>
+    <p className="text-sm text-slate-300 line-clamp-2 mb-3 font-light leading-relaxed">
+      {session.final_transcript || <span className="italic text-slate-600">No transcript available</span>}
+    </p>
+    <div className="flex gap-2">
+      <span className="text-[10px] bg-slate-900/50 px-2 py-1 rounded-md text-slate-400 flex items-center gap-1 border border-slate-800">
+        <Clock className="w-3 h-3" />
+        {session.audio_duration_seconds?.toFixed(1) || '0.0'}s
+      </span>
+      <span className="text-[10px] bg-slate-900/50 px-2 py-1 rounded-md text-slate-400 flex items-center gap-1 border border-slate-800">
+        <Hash className="w-3 h-3" />
+        {session.word_count || 0} words
+      </span>
+    </div>
+  </div>
+);
+
+// --- Main Page ---
+
 export default function Home() {
+  // State
   const [isRecording, setIsRecording] = useState(false);
-  const [status, setStatus] = useState('Ready');
+  const [status, setStatus] = useState<'Ready' | 'Connecting' | 'Recording' | 'Processing' | 'Error'>('Ready');
   const [transcript, setTranscript] = useState('');
   const [partialTranscript, setPartialTranscript] = useState('');
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [elapsedTime, setElapsedTime] = useState(0);
   
+  // Refs
   const socketRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<NodeJS.Timeout>();
   const isRecordingRef = useRef(false);
 
+  // Effects
   useEffect(() => {
     fetchSessions();
+    return () => stopRecordingCleanup();
   }, []);
 
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [transcript, partialTranscript]);
+
+  // Actions
   const fetchSessions = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/v1/sessions/');
@@ -42,12 +163,18 @@ export default function Home() {
     }
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const startRecording = async () => {
     try {
+      setStatus('Connecting');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       
-      // Connect to WebSocket
       const socket = new WebSocket('ws://localhost:8000/ws');
       socketRef.current = socket;
 
@@ -57,8 +184,12 @@ export default function Home() {
         isRecordingRef.current = true;
         setTranscript('');
         setPartialTranscript('');
+        setElapsedTime(0);
         
-        // Setup Audio Processing
+        timerRef.current = setInterval(() => {
+          setElapsedTime(prev => prev + 1);
+        }, 1000);
+        
         const audioContext = new AudioContext({ sampleRate: 16000 });
         audioContextRef.current = audioContext;
         
@@ -67,6 +198,9 @@ export default function Home() {
         }
         
         const input = audioContext.createMediaStreamSource(stream);
+        sourceRef.current = input;
+        
+        // Use ScriptProcessor for raw audio data access (Web Audio API)
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
         
@@ -99,18 +233,10 @@ export default function Home() {
       };
 
       socket.onclose = (event) => {
-        console.log("Socket closed", event);
-        if (isRecordingRef.current) {
-             if (event.code === 1011) {
-                 alert("Backend Error: " + event.reason);
-             } else if (event.code !== 1000) {
-                 console.warn("Connection closed unexpectedly");
-             }
+        if (isRecordingRef.current && event.code === 1011) {
+             alert("Backend Error: " + event.reason);
         }
-        setStatus('Disconnected');
-        setIsRecording(false);
-        isRecordingRef.current = false;
-        fetchSessions(); // Refresh list after recording
+        stopRecordingCleanup();
       };
 
       socket.onerror = (error) => {
@@ -120,144 +246,177 @@ export default function Home() {
 
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      setStatus('Microphone Error');
+      setStatus('Error');
+      alert('Could not access microphone. Please ensure you have granted permission.');
     }
+  };
+
+  const stopRecordingCleanup = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setStatus('Ready');
+    setIsRecording(false);
+    isRecordingRef.current = false;
+    fetchSessions();
   };
 
   const stopRecording = () => {
-    if (socketRef.current) {
-      socketRef.current.close();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
-    setIsRecording(false);
-    isRecordingRef.current = false;
-    setStatus('Ready');
+    if (socketRef.current) socketRef.current.close();
+    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+    if (audioContextRef.current) audioContextRef.current.close();
+    stopRecordingCleanup();
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(transcript);
+  };
+
+  const downloadTranscript = () => {
+    const element = document.createElement("a");
+    const file = new Blob([transcript], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = `transcript-${new Date().toISOString()}.txt`;
+    document.body.appendChild(element);
+    element.click();
   };
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-8">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-800 pb-6">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              AlphaNet Transcription
-            </h1>
-            <p className="text-gray-400 mt-2">Real-time CPU-only speech recognition</p>
+    <main className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
+      
+      {/* Top Navigation Bar */}
+      <nav className="h-16 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md fixed top-0 w-full z-50 flex items-center justify-between px-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <Cpu className="w-5 h-5 text-white" />
           </div>
+          <span className="font-bold text-lg tracking-tight text-white">AlphaNet</span>
+        </div>
+        
+        <div className="flex items-center gap-4">
           <div className={clsx(
-            "px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium",
-            isRecording ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"
+            "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
+            status === 'Recording' 
+              ? "bg-red-500/10 border-red-500/20 text-red-400" 
+              : status === 'Connecting'
+              ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+              : "bg-slate-800 border-slate-700 text-slate-400"
           )}>
-            <div className={clsx(
-              "w-2 h-2 rounded-full",
-              isRecording ? "bg-red-400 animate-pulse" : "bg-green-400"
-            )} />
+            {status === 'Recording' ? <Wifi className="w-3 h-3 animate-pulse" /> : <WifiOff className="w-3 h-3" />}
             {status}
           </div>
         </div>
+      </nav>
 
-        {/* Main Controls & Display */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left Column: Controls */}
-          <div className="space-y-6">
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-blue-400" />
-                Controls
-              </h2>
-              <div className="flex gap-4">
-                <button
-                  onClick={startRecording}
-                  disabled={isRecording}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
-                >
-                  <Mic className="w-5 h-5" />
-                  Start
-                </button>
-                <button
-                  onClick={stopRecording}
-                  disabled={!isRecording}
-                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all"
-                >
-                  <Square className="w-5 h-5" />
-                  Stop
-                </button>
-              </div>
-            </div>
-
-            {/* Session History */}
-            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700 h-[400px] overflow-y-auto">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 sticky top-0 bg-gray-800 pb-2">
-                <FileText className="w-5 h-5 text-purple-400" />
-                History
-              </h2>
-              <div className="space-y-3">
-                {sessions.map((session) => (
-                  <div key={session.id} className="bg-gray-900/50 p-4 rounded-xl border border-gray-700/50 hover:border-gray-600 transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs text-gray-500">
-                        {new Date(session.started_at).toLocaleString()}
-                      </span>
-                      <div className="flex gap-2">
-                        <span className="text-xs bg-gray-700 px-2 py-1 rounded-md text-gray-300 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {session.audio_duration_seconds?.toFixed(1) || '0.0'}s
-                        </span>
-                        <span className="text-xs bg-gray-700 px-2 py-1 rounded-md text-gray-300 flex items-center gap-1">
-                          <Hash className="w-3 h-3" />
-                          {session.word_count || 0}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-gray-300 line-clamp-2">
-                      {session.final_transcript || "No transcript"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Transcript */}
-          <div className="md:col-span-2 bg-gray-800 rounded-2xl p-6 border border-gray-700 min-h-[500px] flex flex-col">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-green-400" />
-              Live Transcript
+      <div className="pt-16 h-screen flex">
+        
+        {/* Sidebar - History */}
+        <aside className="w-80 border-r border-slate-800 bg-slate-900/30 hidden md:flex flex-col">
+          <div className="p-4 border-b border-slate-800">
+            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Recent Sessions
             </h2>
-            <div className="flex-1 bg-gray-900/50 rounded-xl p-6 font-mono text-lg leading-relaxed overflow-y-auto">
-              <span className="text-gray-100">{transcript}</span>
-              <span className="text-gray-500">{partialTranscript}</span>
-              {isRecording && (
-                <span className="inline-block w-2 h-5 ml-1 bg-blue-500 animate-pulse align-middle" />
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+            {sessions.map((session) => (
+              <SessionCard key={session.id} session={session} />
+            ))}
+            {sessions.length === 0 && (
+              <div className="text-center py-10 text-slate-600 text-sm">
+                No history yet.
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <section className="flex-1 flex flex-col relative bg-gradient-to-b from-slate-950 to-slate-900">
+          
+          {/* Transcript View */}
+          <div className="flex-1 overflow-y-auto p-8 md:p-12 custom-scrollbar">
+            <div className="max-w-3xl mx-auto space-y-6">
+              {transcript || partialTranscript ? (
+                <>
+                  <p className="text-lg md:text-xl leading-relaxed text-slate-300 whitespace-pre-wrap">
+                    {transcript}
+                    <span className="text-blue-400 animate-pulse">{partialTranscript}</span>
+                  </p>
+                </>
+              ) : (
+                <div className="h-[60vh] flex flex-col items-center justify-center text-slate-600 gap-6">
+                  <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
+                    <Mic className="w-8 h-8 opacity-40" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-xl font-medium text-slate-400">Ready to Transcribe</h3>
+                    <p className="text-sm max-w-xs mx-auto">Click the microphone button below to start real-time transcription.</p>
+                  </div>
+                </div>
               )}
-            </div>
-            
-            {/* Stats */}
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="bg-gray-900/50 p-3 rounded-lg flex items-center gap-3">
-                <Clock className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-400">Duration</span>
-                <span className="ml-auto font-mono">
-                  {/* Simple timer could go here */}
-                  --:--
-                </span>
-              </div>
-              <div className="bg-gray-900/50 p-3 rounded-lg flex items-center gap-3">
-                <Hash className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-400">Words</span>
-                <span className="ml-auto font-mono">
-                  {(transcript.trim().split(/\s+/).length + (partialTranscript ? 1 : 0)) || 0}
-                </span>
-              </div>
+              <div ref={transcriptEndRef} />
             </div>
           </div>
-        </div>
+
+          {/* Bottom Control Bar */}
+          <div className="border-t border-slate-800 bg-slate-950/90 backdrop-blur-xl p-6">
+            <div className="max-w-4xl mx-auto flex flex-col gap-6">
+              
+              {/* Visualizer & Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                <div className="md:col-span-2">
+                  <AudioVisualizer 
+                    isRecording={isRecording} 
+                    audioContext={audioContextRef.current} 
+                    source={sourceRef.current} 
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                   <button 
+                    onClick={copyToClipboard}
+                    disabled={!transcript}
+                    className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Copy Text"
+                  >
+                    <Copy className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={downloadTranscript}
+                    disabled={!transcript}
+                    className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Download File"
+                  >
+                    <Download className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Controls */}
+              <div className="flex items-center justify-center gap-6">
+                {!isRecording ? (
+                  <button
+                    onClick={startRecording}
+                    className="group relative flex items-center gap-3 px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-semibold transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-600/30 hover:-translate-y-0.5"
+                  >
+                    <Mic className="w-5 h-5" />
+                    <span>Start Recording</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopRecording}
+                    className="group relative flex items-center gap-3 px-8 py-4 bg-red-600 hover:bg-red-500 text-white rounded-full font-semibold transition-all shadow-lg shadow-red-900/20 hover:shadow-red-600/30 hover:-translate-y-0.5"
+                  >
+                    <Square className="w-5 h-5 fill-current" />
+                    <span>Stop Recording</span>
+                    <span className="absolute -top-2 -right-2 bg-slate-900 text-slate-200 text-xs font-mono px-2 py-1 rounded-full border border-slate-700">
+                      {formatTime(elapsedTime)}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </div>
+
+        </section>
       </div>
     </main>
   );

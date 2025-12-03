@@ -95,7 +95,7 @@ frontend/.yarn/
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
-frontend/.next/          # ← Next.js build output
+frontend/.next/*         
 
 # ======================
 # LOGS
