@@ -20,39 +20,114 @@ jobs:
     # 1. Build the Docker Images
     # This ensures your Dockerfile is valid and dependencies install correctly
     - name: Build Docker Images
-      run: docker-compose build
+      run: docker compose build
 
     # 2. Start the Services
     # This spins up the DB, Backend, and Frontend just like on your local machine
     - name: Start Services
-      run: docker-compose up -d
+      run: docker compose up -d
 
     # 3. Wait for Services to be Ready
     # We need to give the backend and DB a moment to initialize
+    # We loop checking the /docs endpoint until it returns 200 OK
     - name: Wait for Backend Health
       run: |
         timeout 60s bash -c 'until curl --silent --fail http://localhost:8000/docs; do sleep 5; done'
       continue-on-error: true 
-      # Note: Since we don't have a dedicated health endpoint, checking /docs is a simple proxy
 
     # 4. Run Tests Inside the Container
     # We execute pytest *inside* the running backend container
+    # The -T flag disables TTY allocation, which is needed for CI environments
     - name: Run Backend Tests
-      run: docker-compose exec -T backend pytest
+      run: docker compose exec -T backend pytest
 
     # 5. Verify Frontend Build
     # We check if the frontend container is running and didn't crash
     - name: Verify Frontend Status
       run: |
-        if [ $(docker inspect -f '{{.State.Running}}' $(docker-compose ps -q frontend)) = "true" ]; then
+        CONTAINER_ID=$(docker compose ps -q frontend)
+        if [ -z "$CONTAINER_ID" ]; then
+          echo "Frontend container not found ❌"
+          exit 1
+        fi
+        
+        IS_RUNNING=$(docker inspect -f '{{.State.Running}}' $CONTAINER_ID)
+        
+        if [ "$IS_RUNNING" = "true" ]; then
           echo "Frontend is running ✅"
         else
           echo "Frontend failed to start ❌"
-          docker-compose logs frontend
+          docker compose logs frontend
           exit 1
         fi
 
     # 6. Cleanup
+    #// filepath: .github/workflows/ci-docker.yml
+name: Docker CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  docker-build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # 1. Build the Docker Images
+    # This ensures your Dockerfile is valid and dependencies install correctly
+    - name: Build Docker Images
+      run: docker compose build
+
+    # 2. Start the Services
+    # This spins up the DB, Backend, and Frontend just like on your local machine
+    - name: Start Services
+      run: docker compose up -d
+
+    # 3. Wait for Services to be Ready
+    # We need to give the backend and DB a moment to initialize
+    # We loop checking the /docs endpoint until it returns 200 OK
+    - name: Wait for Backend Health
+      run: |
+        timeout 60s bash -c 'until curl --silent --fail http://localhost:8000/docs; do sleep 5; done'
+      continue-on-error: true 
+
+    # 4. Run Tests Inside the Container
+    # We execute pytest *inside* the running backend container
+    # The -T flag disables TTY allocation, which is needed for CI environments
+    - name: Run Backend Tests
+      run: docker compose exec -T backend pytest
+
+    # 5. Verify Frontend Build
+    # We check if the frontend container is running and didn't crash
+    - name: Verify Frontend Status
+      run: |
+        CONTAINER_ID=$(docker compose ps -q frontend)
+        if [ -z "$CONTAINER_ID" ]; then
+          echo "Frontend container not found ❌"
+          exit 1
+        fi
+        
+        IS_RUNNING=$(docker inspect -f '{{.State.Running}}' $CONTAINER_ID)
+        
+        if [ "$IS_RUNNING" = "true" ]; then
+          echo "Frontend is running ✅"
+        else
+          echo "Frontend failed to start ❌"
+          docker compose logs frontend
+          exit 1
+        fi
+
+    # 6. Cleanup
+    #Stop containers regardless of pass/fail status
     - name: Stop Containers
-      if: always()
-      run: docker-compose down
+    if: always()
+    run: docker compose down
