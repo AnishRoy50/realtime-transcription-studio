@@ -1,6 +1,6 @@
-# TranscribeLocal 🎙️
+# Transcription Studio🎙️
 
-**TranscribeLocal** is a full-stack, real-time speech-to-text application designed to run entirely on local CPUs. It leverages the **Vosk** engine for ultra-low latency, offline transcription, providing a privacy-focused alternative to cloud-based services.
+**Transcription Studio** is a full-stack, real-time speech-to-text application designed to run entirely on local CPUs. It leverages the **Vosk** engine for ultra-low latency, offline transcription, providing a privacy-focused alternative to cloud-based services.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -45,8 +45,9 @@ The easiest way to run the application is using Docker Compose.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/transcribelocal.git
-    cd transcribelocal
+    https://github.com/AnishRoy50/realtime-transcription-studio.git
+
+    cd realtime-transcription-studio
     ```
 
 2.  **Start the services:**
