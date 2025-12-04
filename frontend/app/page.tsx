@@ -7,6 +7,10 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
+// --- Environment Variables ---
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
+
 // --- Types ---
 interface Session {
   id: string;
@@ -196,7 +200,7 @@ export default function Home() {
   const socketRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const processorRef = useRef<AudioNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout>();
@@ -221,7 +225,7 @@ export default function Home() {
   // Actions
   const fetchSessions = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/sessions/');
+      const res = await fetch(`${API_URL}/sessions/`);
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
@@ -245,10 +249,17 @@ export default function Home() {
   const startRecording = async () => {
     try {
       setStatus('Connecting');
+
+      if (!WS_URL) {
+        setStatus('Error');
+        alert('WebSocket URL is not configured. Please set NEXT_PUBLIC_WS_URL in your environment.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       
-      const socket = new WebSocket('ws://localhost:8000/ws');
+      const socket = new WebSocket(WS_URL);
       socketRef.current = socket;
 
       socket.onopen = async () => {
@@ -275,24 +286,23 @@ export default function Home() {
         const input = audioContext.createMediaStreamSource(stream);
         sourceRef.current = input;
         
-        // Use ScriptProcessor for raw audio data access (Web Audio API)
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        // Use AudioWorklet for raw audio data access (Web Audio API)
+        try {
+          await audioContext.audioWorklet.addModule('/audio-processor.js');
+        } catch (err) {
+          console.error('Failed to load audio processor worklet:', err);
+          throw err;
+        }
+
+        const processor = new AudioWorkletNode(audioContext, 'audio-processor');
         processorRef.current = processor;
         
         input.connect(processor);
         processor.connect(audioContext.destination);
         
-        processor.onaudioprocess = (e) => {
+        processor.port.onmessage = (e) => {
           if (socket.readyState === WebSocket.OPEN) {
-            const inputData = e.inputBuffer.getChannelData(0);
-            // Convert float32 to int16
-            const buffer = new ArrayBuffer(inputData.length * 2);
-            const view = new DataView(buffer);
-            for (let i = 0; i < inputData.length; i++) {
-              let s = Math.max(-1, Math.min(1, inputData[i]));
-              view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-            }
-            socket.send(buffer);
+            socket.send(e.data);
           }
         };
       };
