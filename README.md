@@ -49,23 +49,12 @@ The easiest way to run the application is using Docker Compose.
     cd transcribelocal
     ```
 
-2.  **Download the Model:**
-    Download a lightweight English model (e.g., `vosk-model-small-en-us-0.15`) from the [Vosk Models page](https://alphacephei.com/vosk/models).
-    Extract it into a folder named `model` in the root directory.
-    ```text
-    transcribelocal/
-    ├── model/  <-- Extract model files here
-    ├── app/
-    ├── frontend/
-    ...
-    ```
-
-3.  **Start the services:**
+2.  **Start the services:**
     ```bash
     docker-compose up --build
     ```
 
-4.  **Access the application:**
+3.  **Access the application:**
     - Frontend: [http://localhost:3000](http://localhost:3000)
     - Backend API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
@@ -79,16 +68,21 @@ The easiest way to run the application is using Docker Compose.
 #### 1. Backend Setup
 ```bash
 # Navigate to root
-cd transcribelocal
+cd realtime-transcription-studio
 
 # Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\Activate
+
+# On MAC
+source venv/bin/activate  
+# On Windows:
+.\venv\Scripts\Activate
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Configure Environment
+
 # Create a .env file or ensure your local Postgres matches config.py defaults:
 # DB_USER=postgres, DB_PASSWORD=password, DB_NAME=transcription_db
 
