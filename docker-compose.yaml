@@ -1,6 +1,34 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=transcription_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d transcription_db || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/transcription_db
+      - VOSK_MODEL_PATH=/app/model
+    depends_on:
+      db:
+        condition: service_healthy
+    # no volumes here – use baked image (code + model)
+
   frontend:
     build: ./frontend
     ports:
@@ -13,31 +41,5 @@ services:
     depends_on:
       - app
 
-  app:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/transcription_db
-      - MODEL_PATH=model
-    depends_on:
-      - db
-    volumes:
-      - .:/app
-      # Exclude model from volume to use the one in the image if not present locally
-      - /app/model 
-
-  db:
-    image: postgres:13
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=transcription_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
 volumes:
   postgres_data:
-
