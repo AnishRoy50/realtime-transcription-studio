@@ -49,18 +49,8 @@ The easiest way to run the application is using Docker Compose.
 
     cd realtime-transcription-studio
     ```
-2.  **Download the Model:**
-    Download a lightweight English model (e.g., `vosk-model-small-en-us-0.15`) from the [Vosk Models page](https://alphacephei.com/vosk/models).
-    Extract it into a folder named `model` in the root directory.
-    ```text
-    transcribelocal/
-    ├── model/  <-- Extract model files here
-    ├── app/
-    ├── frontend/
-    ...
-    ```
 
-3.  **Start the services:**
+2.  **Start the services:**
     ```bash
     docker-compose up --build
     ```
