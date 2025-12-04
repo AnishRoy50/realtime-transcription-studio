@@ -7,6 +7,13 @@
 ![Next.js](https://img.shields.io/badge/next.js-14-black)
 ![Docker](https://img.shields.io/badge/docker-ready-blue)
 
+## 🌐 Live Demo
+
+- **Frontend Application**: [https://realtime-transcription-studio.vercel.app/](https://realtime-transcription-studio.vercel.app/)
+- **Backend API Docs**: [https://realtime-transcription-studio.onrender.com/docs](https://realtime-transcription-studio.onrender.com/docs)
+
+> **Note:** The backend is hosted on a free tier service (Render), so it may spin down after inactivity. Please allow a minute for the first request to wake it up.
+
 ## 🚀 Features
 
 - **Real-Time Transcription**: Instant speech-to-text using WebSocket streaming with near-zero latency.
