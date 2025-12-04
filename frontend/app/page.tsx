@@ -225,7 +225,7 @@ export default function Home() {
   // Actions
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/sessions/`);
+      const res = await fetch(`${API_URL}/sessions/`);
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
